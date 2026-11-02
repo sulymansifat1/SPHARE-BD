@@ -14,3 +14,4 @@ run_latency = run_latency_benchmark
 if __name__ == "__main__":
     df = run_latency()
     print(df[["component", "per_recording_latency_median_ms", "real_time_factor"]])
+
