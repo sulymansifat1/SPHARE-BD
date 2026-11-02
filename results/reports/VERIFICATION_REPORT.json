@@ -1,0 +1,56 @@
+{
+  "project": "SPHARE-BD",
+  "architecture": "Two-Stage Hierarchical Support Assessment (Stage 1 + Stage 2 Only)",
+  "timestamp": "2026-11-02 13:04:24",
+  "overall_verification_status": "PASS",
+  "checks": {
+    "SC-01_stage3_not_called": {
+      "passed": true,
+      "details": "stage3_pass is NaN for 100% of rows"
+    },
+    "SC-02_stage3_cannot_affect_acceptance": {
+      "passed": true,
+      "details": "accept is strictly (stage1_pass AND stage2_pass)"
+    },
+    "SC-03_stage2_short_circuits": {
+      "passed": true,
+      "details": "stage2_pass is None for rows failing Stage 1"
+    },
+    "SC-04_classifier_short_circuits": {
+      "passed": true,
+      "details": "yhat emitted strictly on admitted rows"
+    },
+    "SC-05_rejected_representation_consistent": {
+      "passed": true,
+      "details": "100% of rejected rows have abstain=True"
+    },
+    "SC-06_protocol_and_weights_preserved": {
+      "passed": true,
+      "details": "Checkpoints, scale=3.89934, window=2048"
+    },
+    "SC-07_metrics_recomputed": {
+      "passed": true,
+      "details": "Recomputed directly from expA_predictions.csv"
+    },
+    "SC-08_seed_aggregation_rigor": {
+      "passed": true,
+      "details": "3 seeds (42, 123, 2024), 96 evaluations/seed, ddof=0"
+    },
+    "SC-09_figures_authentic": {
+      "passed": true,
+      "details": "Figures generated directly from results"
+    },
+    "SC-10_execution_complete": {
+      "passed": true,
+      "details": "Zero errors or missing dependencies"
+    }
+  },
+  "summary_metrics": {
+    "supported_sdu_coverage_mean": 0.9,
+    "unsupported_sdust_fa_mean": 0.0,
+    "cwru_fa_mean": 0.0,
+    "first_rejection_stage1_count": 62,
+    "first_rejection_stage2_count": 7,
+    "first_rejection_stage3_count": 0
+  }
+}

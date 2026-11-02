@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use SPHARE-BD in your research, please cite our IEEE Signal Processing Letters paper."
+title: "Hierarchical Support Assessment for Selective Bearing Fault Diagnosis Under Operating-Condition Shifts"
+authors:
+  - family-names: "Sifat"
+    given-names: "Md. Sulyman Islam"
+    affiliation: "Department of Computer Science and Engineering, Daffodil International University, Dhaka, Bangladesh"
+    email: "sifat15-4004@diu.edu.bd"
+  - family-names: "Kabir"
+    given-names: "Md Alamgir"
+    affiliation: "Department of Computer Science and Engineering, Daffodil International University, Dhaka, Bangladesh"
+    email: "kabir.cse@diu.edu.bd"
+    orcid: "https://orcid.org/0000-0002-3982-1268"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Sifat"
+      given-names: "Md. Sulyman Islam"
+    - family-names: "Kabir"
+      given-names: "Md Alamgir"
+  title: "Hierarchical Support Assessment for Selective Bearing Fault Diagnosis Under Operating-Condition Shifts"
+  journal: "IEEE Signal Processing Letters"
+  year: 2026
+  publisher: "IEEE"
+repository-code: "https://github.com/sulymansifat1/SPHARE-BD"
+keywords:
+  - "bearing fault diagnosis"
+  - "selective classification"
+  - "support assessment"
+  - "out-of-distribution detection"
+  - "vibration signal processing"
+license: "MIT"

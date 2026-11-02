@@ -1,0 +1,8 @@
+seed,stratum,role,total_n,accepted_n,abstained_n,acceptance_rate,rejection_rate,stage1_rejections,stage2_rejections,accepted_accuracy,accepted_macro_f1,accepted_macro_f1_4class
+42,IN,supported,10,7,3,0.7,0.30000000000000004,0,3,1.0,1.0,1.0
+42,EDGE-1500,supported,10,10,0,1.0,0.0,0,0,1.0,1.0,1.0
+42,EDGE-2500,supported,10,10,0,1.0,0.0,0,0,1.0,1.0,1.0
+42,OUT,unsupported,10,0,10,0.0,1.0,10,0,,,
+42,NEW_AXIS,unsupported,30,0,30,0.0,1.0,30,0,,,
+42,COMPOUND,unsupported,10,0,10,0.0,1.0,10,0,,,
+42,CWRU,separate,16,0,16,0.0,1.0,12,4,,,

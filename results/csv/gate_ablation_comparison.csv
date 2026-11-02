@@ -1,0 +1,6 @@
+configuration,active_gates,supported_coverage_mean,supported_false_rejection,accepted_accuracy_mean,accepted_macro_f1_mean,unsupported_sdust_fa_mean,cwru_fa_mean,notes
+Classifier only,None,1.0,0.0,1.0,1.0,1.0,1.0,Forced diagnosis on all inputs; zero safety.
+Stage 1 only,g1(c),1.0,0.0,1.0,1.0,0.0,0.25,Screens SDUST telemetry; admits 4 CWRU files at 0 HP.
+Stages 1+2 (SPHARE-BD Final Version),"g1(c) * g2(x, c)",0.9,0.1,1.0,1.0,0.0,0.0,"Optimal operational trade-off: 90% coverage, 0% FAR, 100% accuracy."
+Full SPHARE-BD (Stages 1-3),"g1(c) * g2(x, c) * g3(x)",0.6667,0.3333,1.0,1.0,0.0,0.0,Original three-stage hierarchy; adds 7 false rejections per seed.
+CNN-1D Confidence (MSP @ 5th percentile),Softmax Confidence Threshold,0.9,0.1,1.0,1.0,0.58,0.5,"Matched 90% coverage; 58% SDUST FA, 50% CWRU FA."

@@ -1,0 +1,6 @@
+component,execution_context,per_recording_latency_median_ms,per_recording_latency_mean_ms,real_time_factor,decision_path
+Stage 1 Telemetry Support Gate (g1),Evaluates speed/load bounding box,0.143,0.181,> 45000x,Rejects gross mismatch immediately
+Stage 2 Order Spectral Envelope Gate (g2),Order-bin envelope screening (16 support windows),5.4,5.747,> 1400x,Rejects spectral/order inconsistency
+Frozen 1D-CNN Fault Classifier (f_theta),Inference on 102 signal windows (8.16 s duration),22.056,26.264,> 310x,Executes strictly when Stage 1 and Stage 2 pass
+SPHARE-BD Final Version (Stages 1+2 + 1D-CNN),Complete in-memory decision path for admitted signals,27.599,32.192,> 295x,Full pipeline for admitted supported inputs
+"Disk Slice Loading (I/O, 102 windows)","Reading 208,896 samples from disk",50.908,51.834,> 155x,I/O loading overhead

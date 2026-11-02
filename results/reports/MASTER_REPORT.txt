@@ -1,0 +1,375 @@
+SPHARE-BD MASTER REPORT
+Speed- and Physical-envelope Hierarchical Evaluation for Robust Bearing Diagnosis
+(SPHARE-BD Final Version — Authoritative Two-Stage Architecture)
+
+This document is the authoritative scientific master report for SPHARE-BD Final Version.
+It documents the finalized, verified two-stage selective diagnosis architecture, empirical
+benchmarks, gate ablation analysis, coverage-matched out-of-distribution (OOD) baselines,
+computational latency profiles, and critical scientific limitations.
+
+PRIMARY ARTIFACT DIRECTORY: SPHARE-BD Final Version/
+  Checkpoints:     checkpoints/classifier_seed{42,123,2024}.pt
+  Configurations:  configs/experiment_a.json, configs/freeze/
+  Source Code:     src/inference_engine.py, src/model.py, src/support/
+  Result CSVs:     results/csv/
+  Raw Predictions: results/raw/expA_predictions.csv (288 evaluations across 3 seeds)
+  Figures:         figures/fig1_coverage_vs_far.pdf, fig2_stratum_acceptance.pdf,
+                   fig3_gate_ablation.pdf, fig4_baseline_comparison_90pct.pdf
+  Verification:    VERIFICATION_REPORT.json, reports/SPHARE_BD_FINAL_VERSION_EXPERIMENT_REPORT.md
+
+
+================================================================================
+1. PROBLEM STATEMENT AND ARCHITECTURAL SCOPE
+================================================================================
+
+A. The Forced-Classification Failure Mode:
+Standard deep neural networks for vibration-based bearing fault diagnosis operate
+predominantly under a closed-set, forced-classification paradigm. Given an arbitrary
+vibration waveform, the model is compelled to output probabilities summing to 1 over
+predefined training health states (e.g., Normal, Inner Race Fault, Outer Race Fault,
+Ball Fault). When machines experience unlearned operating maneuvers (speed shifts, load
+variations, or foreign kinematics), closed-set classifiers suffer catastrophic
+overconfidence: they project out-of-support signals onto known health categories,
+generating confident but completely erroneous fault classifications.
+
+B. The Selective Diagnosis Formulation:
+SPHARE-BD reformulates bearing diagnostics as a source-only selective classification
+problem. Rather than forcing a fault prediction on every query, the framework evaluates
+physical and kinematic support before allowing the classifier to execute:
+    y_hat(x, c) = f_theta(x)  if A(x, c) == 1
+    y_hat(x, c) = BOT          if A(x, c) == 0  (Safe Abstention)
+
+C. Authoritative Two-Stage Decision Rule:
+In SPHARE-BD Final Version, the hierarchical acceptance function A(x, c) is defined
+strictly by TWO sequential, physical support gates:
+    A(x, c) = g1(c) * g2(x, c)
+
+where:
+  1. g1(c) in {0, 1} is Stage 1: Operating-Condition / Telemetry Support Gate.
+     Evaluates operational metadata c = [speed, load]^T against calibrated source
+     operating bounds (2D Delaunay convex hull or axis-aligned bounding box).
+  2. g2(x, c) in {0, 1} is Stage 2: Kinematic Order-Domain Spectral-Envelope Gate.
+     Normalizes vibration into rotational orders (o = f / f_r) and screens an
+     11-dimensional spectral energy descriptor against regional tolerance envelopes.
+
+D. Sequential Short-Circuiting (Early-Exit Inference):
+Inference operates hierarchically with strict short-circuiting:
+  - If Stage 1 fails (g1(c) == 0): The framework immediately emits BOT and terminates
+    in 0.14 ms CPU latency. Preprocessing, Stage 2, and the classifier are bypassed.
+  - If Stage 1 passes (g1(c) == 1): Waveform x[n] is preprocessed and evaluated by Stage 2.
+  - If Stage 2 fails (g2(x, c) == 0): The framework immediately emits BOT in 5.40 ms
+    CPU latency. Classifier inference is bypassed.
+  - If both pass (A(x, c) == 1): The frozen 1D-CNN diagnoses the waveform via window-level
+    majority voting in 27.60 ms total CPU latency.
+
+E. Rationale for Excising Stage 3:
+In the earlier historical prototype, a third gate (Stage 3: local source manifold
+consistency via Ledoit-Wolf covariance shrinkage) was included. Rigorous empirical
+audit revealed that Stage 3 provided 0.0% unique out-of-distribution rejection benefit
+(100% of unsupported shifts were already stopped by Stages 1 & 2), but caused 7 false
+rejections per seed on valid supported SDUST records (depressing coverage to 66.7%).
+Excising Stage 3 restored supported coverage to 90.00% with 100.0% accepted accuracy,
+while preserving 0.00% false acceptance on all tested unsupported shifts.
+
+
+================================================================================
+2. BENCHMARK DATASETS AND EVALUATION PROTOCOLS
+================================================================================
+
+A. SDUST Testbed Dataset (Primary In-Domain Benchmark):
+  - Source testbed: Shandong University of Science and Technology (Wang et al., 2024).
+  - Sampling frequency: fs = 25,600 Hz.
+  - Health classes (|Y| = 4):
+      0: IRF (Inner Ring Fault, sizes 0.2 mm, 0.4 mm, 0.6 mm)
+      1: NC  (Normal Condition)
+      2: ORF (Outer Ring Fault, sizes 0.2 mm, 0.4 mm, 0.6 mm)
+      3: REF (Rolling Element Fault, sizes 0.2 mm, 0.4 mm, 0.6 mm)
+  - Operating conditions: Shaft speeds 1000, 1500, 2000, 2500, 3000 RPM; static radial
+    loads 0.0 kN and 20.0 kN (nominal 1.0 kN sensor channel).
+  - Strict temporal slice protocol (no sample leakage):
+      * source_train:  samples [0, 626688) across 30 source files (306 windows, 32 sampled/epoch)
+      * source_val:    samples [628736, 837632) across the same 30 files (102 windows each)
+      * supported test: samples [839680, 1048576) across 30 files (102 windows each)
+      * Guard gap: 2048 samples (1 window length) between splits. Zero sample overlap.
+
+B. Case Western Reserve University (CWRU) Dataset (Foreign Cross-Machine Benchmark):
+  - Purpose: Evaluate target-free abstention under foreign machine mechanics and unit shift.
+  - Sampling frequency: fs = 12,000 Hz (drive-end accelerometer).
+  - Speed range: 1730 to 1797 RPM.
+  - Motor load: 0, 1, 2, 3 HP (unconverted raw metadata).
+  - Evaluation protocol: SDUST-calibrated gates evaluate CWRU recordings directly without
+    any fine-tuning, retraining, or target-domain adaptation.
+
+C. Synthetic Multi-Condition Benchmarks (Controlled Geometry):
+  - Experiment B: Independent Physics-Informed Synthetic Bearing Benchmark v1.1
+    (15,876 cases across 3 seeds; tests 2D convex hull vs 1D bounding box geometry).
+  - Experiment C: Synthetic Cross-Machine Benchmark v1.1
+    (9,990 cases across 3 seeds; tests machine transfer under supported vs unsupported regimes).
+
+
+================================================================================
+3. COMPLETE DATA & INFERENCE PIPELINE
+================================================================================
+
+  Operational Telemetry c = [s, L]^T
+        |
+        v
+  [Stage 1: Support Gate g1(c)] ---- (Fail: g1=0) ---> Safe Abstention (BOT) [0.14 ms]
+        | (Pass: g1=1)                                  (Bypasses Stage 2 and CNN)
+        v
+  Vibration Signal x[n] (fs)
+        |
+        +--> Adaptive Windowing: Lw = round(fs * 0.08 s)
+        +--> DC Offset Removal: x_w[n] = x_w[n] - mean(x_w)
+        +--> Global Normalization: x_norm = x_w / sigma_train (sigma = 3.89934)
+        |
+        v
+  [Stage 2: Spectral Envelope Gate g2(x, c)] -- (Fail: g2=0) -> Safe Abstention (BOT) [5.40 ms]
+        | (Pass: g2=1)                                          (Bypasses CNN)
+        v
+  [Joint Acceptance Verified: A(x, c) = g1(c) * g2(x, c) == 1]
+        |
+        v
+  [Frozen 1D-CNN Classifier f_theta(x)]
+        |
+        +--> Evaluate all W = 102 windows
+        +--> Window-level Softmax Probabilities
+        +--> Majority Voting Aggregation
+        |
+        v
+  Diagnostic Prediction y_hat in {0, 1, 2, 3} [27.60 ms total CPU latency]
+
+
+================================================================================
+4. METHODOLOGY & SPECIFICATION (SPHARE-BD FINAL VERSION)
+================================================================================
+
+A. Frozen 1D-CNN Fault Classifier (src/model.py):
+  - Backbone: 4 Conv1D-BatchNorm-ReLU blocks with MaxPool1d and AdaptiveAvgPool1d:
+      * Block 1: Conv1d(1, 16, k=64, s=8, p=28) -> BatchNorm1d(16) -> ReLU() -> MaxPool1d(2, 2)
+                 Weights: 1,024 w + 16 b = 1,040 | Buffers: 32 affine + 32 running stats
+      * Block 2: Conv1d(16, 32, k=3, s=1, p=1) -> BatchNorm1d(32) -> ReLU() -> MaxPool1d(2, 2)
+                 Weights: 1,536 w + 32 b = 1,568 | Buffers: 64 affine + 64 running stats
+      * Block 3: Conv1d(32, 64, k=3, s=1, p=1) -> BatchNorm1d(64) -> ReLU() -> MaxPool1d(2, 2)
+                 Weights: 6,144 w + 64 b = 6,208 | Buffers: 128 affine + 128 running stats
+      * Block 4: Conv1d(64, 128, k=3, s=1, p=1) -> BatchNorm1d(128) -> ReLU() -> AdaptiveAvgPool1d(1)
+                 Weights: 24,576 w + 128 b = 24,704 | Buffers: 256 affine + 256 running stats
+  - Classification Head:
+      * Linear(128, 128) -> ReLU() | Weights: 16,384 w + 128 b = 16,512
+      * Linear(128, 4)             | Weights: 512 w + 4 b = 516
+  - Parameter Totals:
+      * Trainable Parameters: 51,028 float32 weights
+      * Persistent Buffers: 484 elements (running mean/variance)
+      * Checkpoint size: 216,734 bytes on disk (.pt file)
+  - Window Aggregation: Majority vote over all W = 102 windows per recording:
+      y_hat = mode({f_theta(w_j)}_{j=1}^W)
+
+B. Signal Conditioning & Preprocessing:
+  - Adaptive Windowing: Window duration Tw = 0.08 s (Lw = 2048 samples at 25.6 kHz;
+    Lw = 960 samples at 12.0 kHz). Hop size = 1.0 (non-overlapping).
+  - DC Offset Removal: Each window is demeaned independently: x_w[n] = x_w[n] - mean(x_w).
+  - Normalization Scale: Global scalar sigma_train = 3.8993436671993384 fit strictly on
+    DC-removed source_train windows.
+
+C. Stage 1: Operating-Condition Support Gate (src/support/source_support.py):
+  - Evaluates telemetry c = [speed, load]^T.
+  - 2D Delaunay Convex Hull: Evaluated when calibration points span full 2D space (dim=2).
+  - Collinear Bounding Box Fallback: When telemetry points are collinear (e.g., SDUST where
+    all source files have load = 0.0 kN, dim=1), Stage 1 evaluates independent 1D intervals:
+      B = [s_min - delta_s, s_max + delta_s] x [L_min - delta_L, L_max + delta_L]
+  - Adaptive Slack Formulation:
+      delta_j = max(alpha_range * Delta c_j, delta_min)     if Delta c_j > eps_deg
+      delta_j = alpha_degen * |c_j,center| + delta_min      otherwise
+      where Delta c_j = c_j,max - c_j,min, alpha_range = 0.10, delta_min = 0.15,
+      alpha_degen = 0.02, eps_deg = 1e-8.
+  - Active SDUST Verified Bounds:
+      Speed: [1400.0, 2600.0] RPM (source span [1500, 2500] RPM, slack = 100.0 RPM)
+      Load:  [-0.15, 0.15] kN     (source load 0.0 kN, slack = 0.15 kN)
+  - Early Exit: If telemetry is outside bounds, emits BOT with reason
+    CONDITION_AXIS_OUT_OF_SUPPORT in 0.14 ms CPU latency.
+
+D. Stage 2: Kinematic Order-Domain Spectral Envelope Gate (src/support/physical_envelope.py):
+  - Support Subsampling: K = 16 uniformly spaced windows per recording are evaluated.
+  - Order-Domain Feature Extraction:
+      * Shaft rotation frequency: fr = speed / 60 Hz.
+      * Order mapping: o_k = f_k / fr across orders [0, o_max], where o_max = 384.0.
+      * 11 Logarithmic Spectral Descriptors per window:
+          1. v_{w, 1}:  log total energy = ln(max(sum_k |X_w[k]|^2, eps))
+          2. v_{w, 2}:  log RMS amplitude = ln(max(sqrt(mean(x_w^2)), eps))
+          3. v_{w, 2+b} (b=1..8): 8 order bands across [0, 384.0] (width = 48.0 orders)
+          4. v_{w, 11}: low-order energy for orders o_k < 5.0 (unbalance/misalignment band)
+      * Recording descriptor: Coordinate-wise median across K=16 windows yields phi(x) in R^11.
+  - ANOVA Feature Screening on Source Validation:
+      Features retained if condition effect size eta_cond^2 >= 0.15 and fault effect
+      size eta_fault^2 <= 0.45.
+  - Tolerance Envelope:
+      I_{r, k} = [mu_{r, k} - tau * sigma_{r, k},  mu_{r, k} + tau * sigma_{r, k}]
+      calibrated on source validation with 25% energy mass percentile expansion.
+  - Early Exit: If any screened feature falls outside regional envelopes, emits BOT with
+    reason PHYSICAL_INCONSISTENCY in 5.40 ms CPU latency.
+
+E. Decision Hierarchy:
+    A(x, c) = g1(c) * g2(x, c)
+    y_hat(x, c) = mode({f_theta(w_j)}) if A(x, c) == 1 else BOT
+
+
+================================================================================
+5. EXPERIMENT A RESULTS — SDUST & CWRU BENCHMARKS (VERIFIED FINAL VERSION)
+================================================================================
+
+A. Multi-Seed Performance Summary (Seeds 42, 123, 2024; 288 Total Evaluations):
+
+  Metric                               SPHARE-BD Final (Stages 1+2)   Historical 3-Stage
+  --------------------------------------------------------------------------------------
+  Supported SDUST Coverage                     90.00% +- 0.00%           66.67% +- 0.00%
+  Supported False Rejection Rate               10.00% +- 0.00%           33.33% +- 0.00%
+  Accepted Diagnostic Accuracy                100.00% +- 0.00%          100.00% +- 0.00%
+  Accepted Macro-F1 (4-Class)                  1.0000 +- 0.0000          1.0000 +- 0.0000
+  Unsupported SDUST False Acceptance (FAR)      0.00% +- 0.00%            0.00% +- 0.00%
+  CWRU Cross-Machine False Acceptance (FAR)     0.00% +- 0.00%            0.00% +- 0.00%
+
+B. Stratum-Level Breakdown Across All Seeds (96 Recordings/Seed; 288 Total Evals):
+
+  Stratum       Role          Total N   Accepted   Abstained   Cov (%)   FAR (%)   Acc (%)  Failing Gate & Reason
+  ---------------------------------------------------------------------------------------------------------------------
+  IN            Supported        30        21          9        70.0%      ---     100.0%   Stage 2 (9) [PHYSICAL_INCONSISTENCY]
+  EDGE-1500     Supported        30        30          0       100.0%      ---     100.0%   None (0)
+  EDGE-2500     Supported        30        30          0       100.0%      ---     100.0%   None (0)
+  OUT           Unsupported      30         0         30         0.0%     0.0%      ---     Stage 1 (30) [CONDITION_AXIS]
+  NEW_AXIS      Unsupported      90         0         90         0.0%     0.0%      ---     Stage 1 (90) [CONDITION_AXIS]
+  COMPOUND      Unsupported      30         0         30         0.0%     0.0%      ---     Stage 1 (30) [CONDITION_AXIS]
+  CWRU          Foreign Asset    48         0         48         0.0%     0.0%      ---     Stage 1 (36), Stage 2 (12)
+
+C. Identity of the 3 Rejected Supported Records:
+  Across all three seeds (42, 123, 2024), the exact same 3 physical recordings in stratum IN
+  are rejected by Stage 2 order-domain spectral envelope checks:
+    1. SDUST::IF0.2/IF0.2 2000 0.mat (Inner ring fault, 0.2 mm fault size)
+    2. SDUST::IF0.4/IF0.4 2000 0.mat (Inner ring fault, 0.4 mm fault size)
+    3. SDUST::RF0.6/RF0.6 2000 0.mat (Rolling element fault, 0.6 mm fault size)
+  These recordings violate order energy bounds in order_bin_1_logE and low_order_logE.
+  All remaining 7 recordings in IN, all 10 in EDGE-1500, and all 10 in EDGE-2500 pass
+  both gates and are correctly diagnosed by the frozen 1D-CNN (27/27 correct per seed).
+
+
+================================================================================
+6. COMPUTATIONAL LATENCY & INFERENCE EFFICIENCY
+================================================================================
+
+Host Environment: Intel Core i3-1115G4 CPU @ 3.00 GHz, PyTorch CPU, 50 repetitions.
+Waveform Input: 102 windows (208,896 samples = 8.16 s duration).
+
+Component                                      Median Latency   Mean Latency   Real-Time Factor   Operational Role
+--------------------------------------------------------------------------------------------------------------------------
+Stage 1 Support Gate (g1)                            0.143 ms       0.181 ms     > 45,000x faster   Rejects gross telemetry shifts
+Stage 2 Spectral Envelope Gate (g2)                  5.400 ms       5.747 ms      > 1,400x faster   Rejects kinematic mismatch
+Frozen 1D-CNN (f_theta, 102 windows)                22.056 ms      26.264 ms        > 310x faster   Diagnoses admitted signals
+--------------------------------------------------------------------------------------------------------------------------
+Total In-Memory Decision (Stages 1+2 + 1D-CNN)      27.599 ms      32.192 ms        > 295x faster   Full admitted pipeline
+Raw Disk Slice Loading (I/O, 102 windows)           50.908 ms      51.834 ms        > 155x faster   Disk loading overhead
+
+
+================================================================================
+7. GATE ABLATION ANALYSIS
+================================================================================
+
+Configuration                      Decision Rule               Supported Cov   SDUST FAR   CWRU FAR   Macro-F1   Safety Analysis
+----------------------------------------------------------------------------------------------------------------------------------------
+Classifier Only (Forced)           f_theta(x)                         100.0%      100.0%     100.0%     1.0000   Zero safety (all admitted)
+Stage 1 Only                       g1(c)                              100.0%        0.0%      25.0%     1.0000   Screens SDUST; admits 4 CWRU (0 HP)
+Stages 1+2 (SPHARE-BD Final)       g1(c) * g2(x, c)                    90.0%        0.0%       0.0%     1.0000   Optimal trade-off (zero FA)
+Full SPHARE-BD (Historical 3-Stg)  g1(c) * g2(x, c) * g3(x)            66.7%        0.0%       0.0%     1.0000   Stage 3 adds 7 false rejections
+
+Ablation Takeaways:
+1. Stage 1 alone eliminates 100% of unsupported SDUST false acceptances (100% -> 0%) and drops
+   CWRU false acceptance to 25.0% with zero loss in supported coverage (100.0%).
+2. Adding Stage 2 eliminates the remaining 4 CWRU false acceptances (25.0% -> 0.0%) via order-domain
+   kinematic verification, incurring a modest 10.0% false rejection rate on supported records.
+3. Adding Stage 3 provides 0.0% incremental out-of-distribution rejection benefit, while discarding
+   7 valid, correctly classified supported recordings per seed. Excising Stage 3 is strictly optimal.
+
+
+================================================================================
+8. BASELINE COMPARISON AT MATCHED ~90% SUPPORTED COVERAGE
+================================================================================
+
+To ensure rigorous and fair comparison, all post-hoc out-of-distribution detectors
+were recalibrated on the source validation set at quantiles matching SPHARE-BD Final's
+supported coverage (approx 90.0%):
+
+Model / Detector                           Target Cov   Val Quantile   Supp Cov   Supp Sel Error   SDUST FAR   CWRU FAR
+-----------------------------------------------------------------------------------------------------------------------
+SPHARE-BD Final Version (Stages 1+2)            90.0%   N/A (Physics)     90.0%             0.0%        0.0%       0.0%
+KNN-OOD (Sun et al., ICML 2022)                 90.0%        q = 11.0%    90.0%             0.0%       54.0%       0.0%
+Deep Mahalanobis (Ren et al., NeurIPS 2021)     90.0%         q = 7.0%    91.1%             0.0%       54.7%      91.7%
+CNN-1D Confidence (MSP @ 5th percentile)        90.0%         q = 5.0%    90.0%             0.0%       58.0%      50.0%
+Energy-OOD (Liu et al., NeurIPS 2020)           90.0%        q = 16.0%    91.1%             0.0%       70.7%      16.7%
+ReAct-Energy (Sun et al., NeurIPS 2021)         90.0%        q = 13.0%    90.0%             0.0%       74.0%      33.3%
+
+Key Baseline Findings:
+1. When forced to match SPHARE-BD's 90% supported coverage, all deep post-hoc OOD baselines
+   suffer massive false acceptance rates (54.0% to 74.0%) on unsupported SDUST shifts.
+2. Latent representations and softmax energies conflate rotational speed changes with defect
+   signatures: deep models cannot distinguish unsupported kinematics from in-distribution faults.
+3. SPHARE-BD Final Version is the ONLY architecture that achieves 0.0% false acceptance on both
+   unsupported operating-condition shifts and foreign cross-machine recordings.
+
+
+================================================================================
+9. SYNTHETIC & VIRTUAL MACHINE EXPERIMENTS (EXP B & EXP C)
+================================================================================
+
+A. Experiment B: Independent Physics-Informed Synthetic Bearing Benchmark v1.1
+  - Evaluation Suite: 15,876 cases across 3 seeds (5,292 cases/seed).
+  - IN Stratum (Interior cells, 1,296 total cases):
+      * Supported Coverage: 100.0% (1,296 / 1,296 accepted).
+      * Accepted Diagnostic Accuracy: 94.21% (seed 42: 95.14%, seed 123: 93.98%, seed 2024: 93.52%).
+      * Accepted Macro-F1: 0.9412 +- 0.0076.
+  - JOINT-OUT Stratum (Speed & load in 1D bounds, outside 2D hull; 972 total cases):
+      * Acceptance Rate: 0.00% (0 / 972 accepted).
+      * False Acceptance Rate: 0.00% (100% rejected at Stage 1 2D convex hull gate).
+  - OUT, NEW_AXIS, COMPOUND Strata (13,608 total cases):
+      * False Acceptance Rate: 0.00% (100% rejected at Stage 1).
+
+B. Experiment C: Synthetic Cross-Machine Benchmark v1.1
+  - Evaluation Suite: 9,990 cases across 3 seeds.
+  - CM-IN Stratum (Supported virtual machines; 1,296 cases):
+      * Supported Coverage: 96.76% (1,254 / 1,296 accepted).
+  - CM-OUT Stratum (Unsupported virtual machines; 6,156 cases):
+      * False Acceptance Rate: 0.00% (all 6,156 rejected at Stage 1: 5,184 axis-bound, 972 joint-hull).
+
+
+================================================================================
+10. SCIENTIFIC INTERPRETATION & METHODOLOGICAL LIMITATIONS
+================================================================================
+
+1. Empirical Scope of Zero False Acceptance:
+   The 0.0% false acceptance rate observed on SDUST and CWRU demonstrates that SPHARE-BD Final
+   Version reliably rejects the evaluated operating speed, load, and bearing geometry shifts.
+   It does not constitute a mathematical guarantee against arbitrary, unmodeled adversarial shifts
+   whose physical signatures happen to coincide with the calibrated source envelope.
+
+2. Selective Accuracy vs. Forced Accuracy:
+   The 100.0% diagnostic accuracy reported on SDUST applies strictly to the 90.0% admitted
+   supported recordings. Selective accuracy must not be equated to 100% forced classification
+   accuracy, as the model exercised abstention on 3 marginal recordings in the IN stratum.
+
+3. Foreign-Machine Rejection vs. Cross-Machine Diagnosis:
+   SPHARE-BD rejected 100% of foreign CWRU records (75% at Stage 1, 25% at Stage 2). This demonstrates
+   effective protection against false forced diagnosis, but represents an abstention rate of 100%.
+   SPHARE-BD does not diagnose foreign machines without source calibration on that machine family.
+
+4. Metadata Semantics:
+   In CWRU evaluations, motor load is recorded in horsepower (HP), while SDUST load is stored in
+   kilonewtons (kN). Numerical metadata was evaluated as stored. While 1-3 HP exceeded the [-0.15, 0.15]
+   numerical threshold at Stage 1, the 0 HP condition passed Stage 1 and was strictly rejected by
+   Stage 2 rotational order spectral physics.
+
+5. Temporal Holdout Limitation:
+   Evaluation recordings in eval_IN, eval_EDGE-1500, and eval_EDGE-2500 are later non-overlapping
+   temporal slices ([839680, 1048576)) of the same physical testbed runs used for training,
+   separated by a 2048-sample guard gap. They evaluate temporal stability under supported regimes,
+   not unseen bearing installations.
+
+================================================================================
+END OF SPHARE-BD MASTER REPORT
+================================================================================

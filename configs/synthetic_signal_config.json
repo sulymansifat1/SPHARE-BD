@@ -1,0 +1,106 @@
+{
+  "dataset_name": "SPHARE-BD Independent Physics-Informed Synthetic Bearing Benchmark",
+  "version": "1.1.0",
+  "sampling_rate_hz": 10000,
+  "duration_sec": 3.0,
+  "internal_horizon_sec": 3.3,
+  "n_virtual_bearings": 10,
+  "recordings_per_class_cell": 18,
+  "source_train_n": 12,
+  "source_val_n": 3,
+  "source_reserved_n": 3,
+  "classes": [
+    "HEALTHY",
+    "INNER_RACE_FAULT",
+    "OUTER_RACE_FAULT",
+    "BALL_FAULT",
+    "CAGE_FAULT",
+    "MULTI_FAULT"
+  ],
+  "class_notes": {
+    "MULTI_FAULT": "Multiple simultaneous fault mechanisms. This is not the operating-condition stratum COMPOUND."
+  },
+  "bearing_population": {
+    "n_balls": [8, 9, 10],
+    "ball_diameter_mm": [7.2, 9.2],
+    "pitch_diameter_mm": [46.0, 58.0],
+    "contact_angle_deg": [0.0, 12.0],
+    "radial_clearance_um": [5.0, 25.0],
+    "resonance_hz": [1800.0, 4200.0],
+    "damping_ratio": [0.025, 0.06],
+    "nominal_gain": [0.8, 1.25],
+    "baseline_level": [0.7, 1.35],
+    "structural_coupling": [0.55, 1.65]
+  },
+  "severity": {"low": 0.25, "high": 1.0, "distribution": "uniform"},
+  "nuisance": {
+    "sensor_gain": [0.55, 1.7],
+    "additive_noise_level": [0.02, 0.09],
+    "colored_noise_level": [0.03, 0.14],
+    "colored_noise_exponent": [0.4, 1.6],
+    "resonance_shift_frac": [-0.14, 0.14],
+    "damping_shift_frac": [-0.35, 0.35],
+    "shaft_jitter_frac": [0.003, 0.012],
+    "speed_drift_frac": [-0.008, 0.008],
+    "load_fluct_frac": [0.01, 0.045],
+    "baseline_vibration_scale": [0.55, 1.55],
+    "contact_stiffness_scale": [0.65, 1.45],
+    "fault_slip_frac": 0.006,
+    "event_jitter_frac": 0.012,
+    "sensor_cutoff_hz": [2800.0, 4900.0],
+    "sensor_highpass_hz": [2.0, 18.0],
+    "offset_std": 0.03,
+    "clip_margin": [4.5, 9.0]
+  },
+  "disturbances": {
+    "impulse_burst_p": 0.18,
+    "lf_burst_p": 0.14,
+    "narrowband_p": 0.12,
+    "sensor_glitch_p": 0.08,
+    "artifact_p": 0.07
+  },
+  "load_model": {
+    "hertz_sat": 0.38,
+    "impulse_floor": 0.48,
+    "impulse_span": 0.72,
+    "damping_gain": 0.55,
+    "modulation_floor": 0.05,
+    "modulation_span": 0.32,
+    "lf_floor": 0.12,
+    "lf_span": 0.48,
+    "stiffness_harm_gain": 0.35,
+    "hetero_frac": 0.28
+  },
+  "harmonics": {"max_order": 8, "amp_min": 0.05, "amp_max": 0.55},
+  "background": {
+    "poisson_rate_hz": [8.0, 70.0],
+    "poisson_amp": [0.08, 0.38],
+    "hum_freq_hz": [2.5, 28.0],
+    "hum_amp": [0.04, 0.28]
+  },
+  "fault": {
+    "impulse_amp": 3.1,
+    "dropout_scale": 0.18,
+    "cage_amp_scale": 2.4,
+    "kernel_sec_min": 0.012,
+    "kernel_sec_max": 0.032
+  },
+  "gen_shift": {
+    "recordings_per_class_cell": 1,
+    "resonance_shift_frac": [-0.22, 0.18],
+    "damping_shift_frac": [-0.45, 0.15],
+    "additive_noise_level": [0.05, 0.16],
+    "colored_noise_level": [0.07, 0.2],
+    "sensor_gain": [0.45, 1.9],
+    "severity": {"low": 0.15, "high": 0.85, "distribution": "uniform"}
+  },
+  "seed_tags": {
+    "nuisance": 101,
+    "shaft": 202,
+    "harmonics": 303,
+    "fault": 404,
+    "background": 505,
+    "sensor": 606,
+    "disturbance": 707
+  }
+}
