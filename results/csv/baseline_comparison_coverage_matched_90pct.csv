@@ -1,7 +1,0 @@
-model_key,model_name,target_coverage,matched_val_quantile_pct,supported_coverage_mean,supported_selective_error_mean,unsupported_sdust_fa_mean,cwru_fa_mean
-energy_ood,Energy-OOD (Liu et al. 2020),0.9,16.0,0.9111111111111111,0.0,0.7066666666666667,0.16666666666666666
-knn_ood,KNN-OOD (Sun et al. 2022),0.9,11.0,0.9,0.0,0.54,0.0
-deep_mahalanobis,Deep Mahalanobis (Ren et al. 2021),0.9,7.0,0.9111111111111111,0.0,0.5466666666666667,0.9166666666666666
-react_energy,ReAct-Energy (Sun et al. 2021),0.9,13.0,0.9,0.0,0.7399999999999999,0.3333333333333333
-sphare_bd_final,SPHARE-BD Final Version (Stages 1+2),0.9,,0.9,0.0,0.0,0.0
-cnn1d_confidence,CNN-1D Confidence (MSP @ 5th percentile),0.9,5.0,0.9,0.0,0.58,0.5

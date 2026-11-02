@@ -73,3 +73,7 @@ datasets/
 *.orig
 scratch/
 Archive/
+
+# Generated execution outputs
+results/
+
