@@ -15,24 +15,23 @@ Official research code and reproducibility repository for:
 ---
 
 ## Table of Contents
-- [1. Overview & Research Postulate](#1-overview--research-postulate)
+- [1. Overview](#1-overview)
 - [2. Method Architecture](#2-method-architecture)
-- [3. Key Experimental Findings](#3-key-experimental-findings)
-- [4. Repository Structure](#4-repository-structure)
-- [5. System Requirements](#5-system-requirements)
-- [6. One-Command Reproduction](#6-one-command-reproduction)
-- [7. Modular Execution Workflow](#7-modular-execution-workflow)
-- [8. Benchmark Datasets & Acquisition](#8-benchmark-datasets--acquisition)
-- [9. Output Locations & Verification Checklist](#9-output-locations--verification-checklist)
-- [10. Troubleshooting](#10-troubleshooting)
-- [11. Citation](#11-citation)
-- [12. License & Data Use](#12-license--data-use)
+- [3. Repository Structure](#3-repository-structure)
+- [4. System Requirements & Dependencies](#4-system-requirements--dependencies)
+- [5. Quick Start (One-Command Execution)](#5-quick-start-one-command-execution)
+- [6. Modular Execution Workflow](#6-modular-execution-workflow)
+- [7. Benchmark Datasets & Setup](#7-benchmark-datasets--setup)
+- [8. Output Artifacts & Reports](#8-output-artifacts--reports)
+- [9. Troubleshooting](#9-troubleshooting)
+- [10. Citation](#10-citation)
+- [11. License](#11-license)
 
 ---
 
-## 1. Overview & Research Postulate
+## 1. Overview
 
-Standard deep learning models for vibration-based bearing fault diagnosis operate predominantly under a **closed-set, forced-classification paradigm**: given an arbitrary vibration waveform $x$, the network is compelled to emit an argmax prediction over training fault classes, even when the input reflects unlearned rotational speeds, secondary load variations, or foreign machine mechanics. Under domain shift, such models output catastrophically confident but physically erroneous fault labels.
+Standard deep learning models for vibration-based bearing fault diagnosis operate predominantly under a closed-set, forced-classification paradigm: given an arbitrary vibration waveform $x$, the network is compelled to emit an argmax prediction over training fault classes, even when the input reflects unlearned rotational speeds, secondary load variations, or foreign machine mechanics. Under domain shift, such models output catastrophically confident but physically erroneous fault labels.
 
 **SPHARE-BD** reformulates bearing diagnostics into a target-free, source-only selective classification problem:
 $$\hat{y}(x, c) = \begin{cases} f_\theta(x), & \text{if } A(x, c) = 1, \\ \bot, & \text{if } A(x, c) = 0 \quad (\text{Safe Abstention}), \end{cases}$$
@@ -52,7 +51,7 @@ SPHARE-BD implements a **Two-Stage Hierarchical Support-Assessment Architecture*
               - Screens telemetry c = [s, L]^T against source support geometry
               - Delaunay 2D convex hull (planar) or collinear bounding box (SDUST)
               - Active SDUST bounds: s in [1400, 2600] RPM, L in [-0.15, 0.15] kN
-              - If Fail: SHORT-CIRCUIT EARLY EXIT (0.14 ms CPU latency)
+              - If Fail: SHORT-CIRCUIT EARLY EXIT
                 Decision: ABSTAIN (BOT), Reason: CONDITION_AXIS_OUT_OF_SUPPORT
                                   |
                                   v (Pass: g1(c) = 1)
@@ -69,60 +68,22 @@ SPHARE-BD implements a **Two-Stage Hierarchical Support-Assessment Architecture*
               - Order mapping: o_k = f_k / fr across orders [0, 384]
               - 11 physical spectral descriptors (8 order bins + log-total + log-RMS + low-order)
               - Screened regional tolerance envelopes: lo_k <= phi_k <= hi_k
-              - If Fail: SHORT-CIRCUIT EARLY EXIT (5.40 ms CPU latency)
+              - If Fail: SHORT-CIRCUIT EARLY EXIT
                 Decision: ABSTAIN (BOT), Reason: PHYSICAL_INCONSISTENCY
                                   |
                                   v (Pass: g2(x, c) = 1; Both Gates Pass)
             [Frozen 1D-CNN Fault Classifier f_theta(x)]
               - Evaluates all W = 102 normalized windows (8.16 s duration)
               - Window-level majority voting aggregation
-              - Latency: 22.06 ms CPU
               - Emits Fault Diagnosis y_hat in {0: IRF, 1: NC, 2: ORF, 3: REF}
 ```
 
 > [!NOTE]
-> **Stage 3 Excision:** The historical three-stage prototype included a deep feature manifold gate (Stage 3). Rigorous empirical auditing demonstrated that Stage 3 provided 0.0% unique OOD rejection benefit on unsupported shifts while depressing supported coverage from 90.0% down to 66.7% (falsely rejecting all REF recordings in nominal interior stratum `IN`). Stage 3 is therefore excised from active inference and retained strictly as an ablation baseline.
+> **Sequential Early-Exit Execution:** If telemetry falls outside known operating limits in Stage 1, the pipeline immediately triggers early exit and abstains from issuing a diagnosis, skipping subsequent signal windowing, spectral transformations, and neural network inference.
 
 ---
 
-## 3. Key Experimental Findings
-
-### 3.1 Main Results (SDUST & CWRU Benchmarks)
-Evaluated across three random seeds (42, 123, 2024; 288 total evaluations):
-
-| Method / Gate Configuration | Supported Coverage (%) $\uparrow$ | Accepted Diagnostic Accuracy (%) $\uparrow$ | SDUST Unsupported FAR (%) $\downarrow$ | CWRU Cross-Machine FAR (%) $\downarrow$ |
-| :--- | :---: | :---: | :---: | :---: |
-| **Forced Classifiers (Ungated)** | | | | |
-| 1D-CNN (Kiranyaz et al. 2021) | 100.0 | 100.0 | 100.0 | 100.0 |
-| LiConvFormer (Ding et al. 2024) | 100.0 | 100.0 | 100.0 | 100.0 |
-| BDC (Zhang et al. 2024) | 100.0 | 98.1 | 100.0 | --- |
-| SPHARE-BD backbone (ungated) | 100.0 | 100.0 | 100.0 | 100.0 |
-| **Selective Classification Baseline** | | | | |
-| CNN-1D Confidence (MSP @ 5th percentile) | 90.0 | 100.0 | 58.0 | 50.0 |
-| **Coverage-Matched Post-Hoc OOD Baselines ($\approx 90\%$ Coverage)** | | | | |
-| KNN-OOD ($k=50$, Sun et al. 2022) | 90.0 | 100.0 | 54.0 | 0.0 |
-| Deep Mahalanobis (Ren et al. 2021) | 91.1 | 100.0 | 54.7 | 91.7 |
-| Energy-OOD (Liu et al. 2020) | 91.1 | 100.0 | 70.7 | 16.7 |
-| ReAct-Energy (Sun et al. 2021) | 90.0 | 100.0 | 74.0 | 33.3 |
-| **Proposed SPHARE-BD (Stages 1+2)** | **90.0** | **100.0** | **0.00** | **0.00** |
-
-### 3.2 Sequential Gate Ablation
-| Configuration | Supported Coverage (%) | SDUST FAR (%) | CWRU FAR (%) | Safety Takeaway |
-| :--- | :---: | :---: | :---: | :--- |
-| **Classifier only** | 100.0 | 100.0 | 100.0 | Zero safety; 100% false acceptance on all shifts |
-| **Stage 1 only** | 100.0 | 0.0 | 25.0 | Telemetry bounds eliminate SDUST FAR; admits 4 CWRU files @ 0 HP |
-| **Stages 1+2 (Proposed)** | **90.0** | **0.0** | **0.0** | Order spectral envelope eliminates foreign CWRU; optimal safety |
-| **Full SPHARE-BD (Hist. 3-Stage)**| 66.7 | 0.0 | 0.0 | Stage 3 adds 7 false rejections per seed without extra OOD benefit |
-
-### 3.3 Computational Latency (Intel Core i3-1115G4 CPU)
-- **Stage 1 Support Gate:** $0.14\text{ ms}$ median ($>45,000\times$ faster than real-time)
-- **Stage 2 Spectral Envelope Gate:** $5.40\text{ ms}$ median ($>1,400\times$ faster than real-time)
-- **Frozen 1D-CNN (102 windows, 8.16 s):** $22.06\text{ ms}$ median ($>310\times$ faster than real-time)
-- **Total In-Memory Decision:** $27.60\text{ ms}$ median ($>295\times$ faster than real-time)
-
----
-
-## 4. Repository Structure
+## 3. Repository Structure
 
 ```text
 SPHARE-BD-GitHub/
@@ -132,7 +93,7 @@ SPHARE-BD-GitHub/
 ├── pyproject.toml               <- Standard packaging metadata
 ├── LICENSE                      <- MIT Open-Source License
 ├── CITATION.cff                 <- Machine-readable citation metadata
-├── .gitignore                   <- Robust Git ignore rules
+├── .gitignore                   <- Git ignore rules
 │
 ├── configs/
 │   ├── experiment_a.json        <- Experiment A configuration
@@ -173,9 +134,9 @@ SPHARE-BD-GitHub/
 │   └── baselines/
 │       └── risk_coverage_sweep.csv <- Authoritative baseline sweep cache
 │
-├── results/
+├── results/                     <- Directory where pipeline outputs are written
 │   ├── csv/                     <- Clean CSV deliverables
-│   ├── figures/                 <- Publication figures (PDF & PNG 300 DPI)
+│   ├── figures/                 <- Generated publication figures (PDF & PNG 300 DPI)
 │   ├── raw/                     <- Raw recording predictions (expA_predictions.csv)
 │   ├── logs/                    <- Complete execution logs
 │   └── reports/                 <- Master reproducibility & verification reports
@@ -186,112 +147,170 @@ SPHARE-BD-GitHub/
 
 ---
 
-## 5. System Requirements
+## 4. System Requirements & Dependencies
 
 - **Python Version:** Python 3.9, 3.10, 3.11, or 3.12 (Tested on Python 3.11.9 64-bit).
 - **Operating System:** Windows 10/11, Ubuntu 20.04/22.04 LTS, or macOS.
 - **Hardware Requirements:**
-  - Minimum: Standard x86_64 CPU (e.g., Intel Core i3 / AMD Ryzen 3), 4 GB RAM.
-  - CUDA GPU: Supported but not required (all benchmark inference runs on CPU in < 50 seconds).
+  - Standard x86_64 CPU (e.g., Intel Core i3 / AMD Ryzen 3), 4 GB RAM.
+  - CUDA GPU: Supported but not required (all benchmark inference runs on CPU in < 60 seconds).
+
+### Dependency Installation
+
+You can install dependencies directly into your environment:
+
+```bash
+pip install -r requirements.txt
+```
+
+Core dependencies:
+- `torch >= 2.0.0`
+- `numpy >= 1.22.0`
+- `scipy >= 1.9.0`
+- `scikit-learn >= 1.1.0`
+- `pandas >= 1.4.0`
+- `matplotlib >= 3.5.0`
 
 ---
 
-## 6. One-Command Reproduction
+## 5. Quick Start (One-Command Execution)
 
 ### Windows One-Click
-Double-click `RUN_ALL.bat` in the repository root.
+Double-click `RUN_ALL.bat` in the repository root folder.
 
 ### Terminal / Command Prompt
 ```bash
 python run_all.py
 ```
 
-### What Happens Automatically:
-1. **Environment Check:** Verifies Python 3.9+, initializes an isolated `.venv`, and installs dependencies.
-2. **Dataset Check:** Verifies manifests, links existing datasets, and automatically downloads public CWRU files.
-3. **Model Verification:** Validates frozen checkpoints and exact parameter counts.
-4. **Experiment A:** Runs SDUST in-domain and foreign CWRU evaluations across seeds 42, 123, 2024.
-5. **OOD Baselines:** Recalibrates post-hoc OOD detectors at matched ~90% supported coverage.
+### Useful CLI Options
+- **Use existing active Python environment (bypass virtual environment creation):**
+  ```bash
+  python run_all.py --no-venv
+  ```
+- **Run for specific random seeds:**
+  ```bash
+  python run_all.py --seeds 42
+  ```
+- **Skip pre-flight unit tests:**
+  ```bash
+  python run_all.py --skip-tests
+  ```
+
+### What `run_all.py` Executes Automatically:
+1. **Environment Check:** Verifies Python 3.9+, initializes an isolated virtual environment (`.venv`), and installs dependencies.
+2. **Dataset Check:** Verifies manifests, links existing datasets, and downloads public CWRU files if missing.
+3. **Pre-flight Tests:** Executes unit tests across modules.
+4. **Experiment A:** Runs SDUST in-domain and foreign CWRU evaluations across random seeds.
+5. **OOD Baselines:** Recalibrates post-hoc OOD detectors (Energy, ReAct, Mahalanobis, k-NN) at matched coverage.
 6. **Ablation & Benchmarks:** Runs gate ablations, synthetic experiments B & C, and latency measurements.
-7. **Figures & Reports:** Renders 300 DPI publication vector graphics and compiles `REPRODUCIBILITY_REPORT.md`.
+7. **Figures & Reports:** Renders high-resolution vector and raster publication figures and compiles reproducibility reports into `results/`.
 
 ---
 
-## 7. Modular Execution Workflow
+## 6. Modular Execution Workflow
 
-Researchers can also invoke modular experiment scripts independently:
+Each component can also be executed individually:
 
 ```bash
-# 1. Run Main Experiment A (SDUST & CWRU)
+# 1. Run Unit Tests
+python -m unittest discover tests/
+
+# 2. Run Main Experiment A (SDUST & CWRU)
 python experiments/run_experiment_a.py
 
-# 2. Run Gate Ablation Analysis
+# 3. Run Sequential Gate Ablation Analysis
 python experiments/run_ablation.py
 
-# 3. Recalibrate OOD Baselines
+# 4. Recalibrate Post-Hoc OOD Baselines
 python experiments/run_baselines.py
 
-# 4. Run Controlled Synthetic Benchmarks
+# 5. Run Controlled Synthetic Benchmarks (Exp B & C)
 python experiments/run_synthetic.py
 
-# 5. Measure Computational Latency
+# 6. Benchmark Computational Latency
 python experiments/run_latency_benchmark.py
 
-# 6. Render Publication Figures
+# 7. Render Publication Figures
 python src/plot_figures.py
 python src/generate_ieee_figures.py
-
-# 7. Run Unit Tests
-python -m unittest discover tests/
 ```
 
 ---
 
-## 8. Benchmark Datasets & Acquisition
+## 7. Benchmark Datasets & Setup
+
+Detailed dataset instructions and file schemas are documented in [docs/DATASETS.md](docs/DATASETS.md) and [data/README.md](data/README.md).
 
 ### SDUST Dataset (Shandong University of Science and Technology)
 - Comprises vibration acceleration recorded from deep groove ball bearings (N205EU) under speeds 1000–3000 RPM and radial loads 0.0 & 20.0 kN.
 - SDUST raw files are subject to institutional data-use conditions. All split manifests and temporal indices are included in `data/manifests/sdust/`.
 - If you have downloaded SDUST `.mat` files, place them in `data/sdust/` or set the environment variable:
   ```bash
+  # Windows CMD
   set SPHARE_DATASET_ROOT=C:\path\to\datasets
+
+  # Windows PowerShell
+  $env:SPHARE_DATASET_ROOT="C:\path\to\datasets"
+
+  # Linux / macOS
+  export SPHARE_DATASET_ROOT="/path/to/datasets"
   ```
 
 ### CWRU Dataset (Case Western Reserve University)
 - 16 held-out 12 kHz drive-end recordings across 0–3 HP motor loads.
-- Downloaded automatically by `run_all.py` from the official [Case Western Reserve University Bearing Data Center](https://engineering.case.edu/bearingdatacenter).
+- Downloaded automatically by `run_all.py` from the official [Case Western Reserve University Bearing Data Center](https://engineering.case.edu/bearingdatacenter) if not already present.
 
 ---
 
-## 9. Output Locations & Verification Checklist
+## 8. Output Artifacts & Reports
 
-All generated outputs are saved to structured subdirectories inside `results/`:
-- `results/csv/`:
-  - `per_recording_outcomes.csv`: Individual predictions for all 288 evaluations across 3 seeds.
-  - `stratum_coverage_rejection.csv`: Per-stratum acceptance, rejection, and reason codes.
-  - `per_seed_metrics.csv` & `seed_aggregated_metrics.csv`: Diagnostic accuracy, coverage, and FAR.
-  - `baseline_comparison_coverage_matched_90pct.csv`: Coverage-matched baseline metrics.
+When the pipeline finishes running, all generated artifacts are written to `results/`:
+
+- **CSV Tables (`results/csv/`):**
+  - `per_recording_outcomes.csv`: Individual predictions for each recording evaluation.
+  - `stratum_coverage_rejection.csv`: Per-stratum acceptance, rejection, and decision reason codes.
+  - `per_seed_metrics.csv` & `seed_aggregated_metrics.csv`: Diagnostic accuracy, coverage, and false acceptance rate summary metrics.
+  - `baseline_comparison_coverage_matched_90pct.csv`: Coverage-matched baseline comparison.
   - `gate_ablation_comparison.csv`: Sequential gate ablation results.
   - `computational_latency.csv`: Execution latency breakdown.
-- `results/figures/`: Publication vector PDFs and 300 DPI PNGs.
-- `results/reports/`:
-  - `REPRODUCIBILITY_REPORT.md`: Comprehensive markdown report.
-  - `VERIFICATION_REPORT.json`: Machine-readable audit against all 10 sanity checks.
+  - `expB_synthetic_stage_ablation.csv`: Synthetic Exp B results.
+  - `expC_cross_machine_comparison.csv`: Synthetic Exp C results.
+
+- **Publication Figures (`results/figures/`):**
+  - `fig1_coverage_vs_far.png` / `.pdf`: Risk-coverage curve comparison.
+  - `fig1_framework.png` / `.pdf`: Architectural framework diagram.
+  - `fig2_stratum_acceptance.png` / `.pdf` & `fig2_three_panel.png` / `.pdf`: Stratum acceptance distributions.
+  - `fig3_gate_ablation.png` / `.pdf`: Sequential ablation breakdown.
+  - `fig4_baseline_comparison_90pct.png` / `.pdf`: Matched baseline comparison.
+
+- **Reports & Verification (`results/reports/`):**
+  - `REPRODUCIBILITY_REPORT.md`: Comprehensive markdown report generated after execution.
+  - `VERIFICATION_REPORT.json`: Machine-readable audit output checking all sanity checks.
+  - `MASTER_REPORT.txt`: Full textual execution log.
 
 ---
 
-## 10. Troubleshooting
+## 9. Troubleshooting
 
-- **Python Not Found on Windows:** Ensure Python is added to your system `PATH`, or run `py -3 run_all.py`.
-- **Missing SDUST Files:** Ensure SDUST `.mat` files are placed under `data/sdust/<fault_type>/` (e.g. `data/sdust/IF0.2/IF0.2 2000 0.mat`) or configure `SPHARE_DATASET_ROOT`.
-- **Virtual Environment Permission Issues:** Pass `--no-venv` to run using your currently active Python environment:
+- **Python Command Not Found on Windows:**
+  Ensure Python is added to your Windows `PATH`, or invoke the Python launcher:
+  ```cmd
+  py -3 run_all.py
+  ```
+
+- **SDUST Raw Data Placement:**
+  Ensure SDUST `.mat` files are organized under `data/sdust/<fault_type>/` (e.g. `data/sdust/IF0.2/IF0.2 2000 0.mat`) or specify the directory using `SPHARE_DATASET_ROOT`.
+
+- **Virtual Environment Permission Issues:**
+  Pass `--no-venv` to run using your currently active Python environment:
   ```bash
   python run_all.py --no-venv
   ```
 
 ---
 
-## 11. Citation
+## 10. Citation
 
 If you use SPHARE-BD in your research, please cite our IEEE Signal Processing Letters paper:
 
@@ -307,8 +326,8 @@ If you use SPHARE-BD in your research, please cite our IEEE Signal Processing Le
 
 ---
 
-## 12. License & Data Use
+## 11. License
 
 - **Software Code:** Licensed under the [MIT License](LICENSE).
 - **Checkpoints & Manifests:** Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- **Third-Party Data:** CWRU and SDUST datasets remain subject to their respective institutional terms of use.
+- **Third-Party Datasets:** CWRU and SDUST datasets remain subject to their respective institutional terms of use.
