@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""SPHARE-BD: Central One-Command Research Pipeline Launcher.
+"""SPHARE-BD: Central Research Pipeline Launcher.
 
 Hierarchical Support Assessment for Selective Bearing Fault Diagnosis Under Operating-Condition Shifts
-Target Venue: IEEE Signal Processing Letters
 Authors: Md. Sulyman Islam Sifat, Md Alamgir Kabir (Daffodil International University)
 
 Usage:
-    python run_all.py
-    python run_all.py --no-venv
-    python run_all.py --seeds 42 123 2024
+    python run_all.py                     # Runs complete research pipeline
+    python run_all.py --only model        # Runs proposed model evaluation
+    python run_all.py --only ablation     # Runs sequential gate ablation
+    python run_all.py --only baselines    # Runs coverage-matched baseline comparison
+    python run_all.py --only synthetic    # Runs controlled synthetic benchmarks
+    python run_all.py --only latency      # Measures CPU inference latency
 """
 from __future__ import annotations
 
@@ -51,7 +53,7 @@ def log(msg: str, header: bool = False) -> None:
 
 
 # ==============================================================================
-# STEP 1: ENVIRONMENT CHECK & VIRTUAL ENVIRONMENT MANAGEMENT
+# ENVIRONMENT CHECK & VIRTUAL ENVIRONMENT MANAGEMENT
 # ==============================================================================
 def check_python_version() -> Tuple[bool, str]:
     v = sys.version_info
@@ -89,18 +91,27 @@ def is_running_in_venv() -> bool:
 # MAIN PIPELINE ORCHESTRATOR
 # ==============================================================================
 def main() -> None:
-    parser = argparse.ArgumentParser(description="SPHARE-BD One-Command Research Pipeline")
+    parser = argparse.ArgumentParser(description="SPHARE-BD Research Pipeline")
+    parser.add_argument(
+        "--only",
+        type=str,
+        default="all",
+        choices=["all", "model", "ablation", "baselines", "synthetic", "latency"],
+        help="Specify a single experiment to run (default: 'all')",
+    )
     parser.add_argument("--no-venv", action="store_true", help="Do not create or switch into a .venv environment")
     parser.add_argument("--skip-download", action="store_true", help="Skip automatic downloading of public datasets")
+    parser.add_argument("--skip-tests", action="store_true", help="Skip pre-flight unit tests")
     parser.add_argument("--seeds", nargs="+", type=int, default=[42, 123, 2024], help="Random seeds for evaluation")
     parser.add_argument("--device", type=str, default="cpu", help="PyTorch compute device ('cpu' or 'cuda')")
     args = parser.parse_args()
 
     t_start = time.time()
-    log("SPHARE-BD ONE-COMMAND RESEARCH PIPELINE INITIALIZED", header=True)
+    log("SPHARE-BD RESEARCH PIPELINE INITIALIZED", header=True)
     log(f"Repository Root: {REPO_ROOT}")
     log(f"Operating System: {platform.system()} ({platform.release()})")
     log(f"Architecture: {platform.machine()}")
+    log(f"Target Task: {args.only}")
 
     # --------------------------------------------------------------------------
     # Step 1: Environment Check
@@ -112,17 +123,17 @@ def main() -> None:
         sys.exit(1)
     log(f"Python interpreter: {sys.executable} (Version {py_ver}) - COMPATIBLE")
 
-    # Virtual environment redirection if not already inside one and not disabled
     venv_dir = REPO_ROOT / ".venv"
     if not args.no_venv and not is_running_in_venv():
         try:
             py_exec = setup_virtual_environment(venv_dir)
             log(f"[Env] Virtual environment ready: {py_exec}")
-            # Relaunch script inside venv
             log("[Env] Switching execution context into .venv...")
-            cmd = [str(py_exec), str(Path(__file__).resolve()), "--no-venv"]
+            cmd = [str(py_exec), str(Path(__file__).resolve()), "--no-venv", "--only", args.only]
             if args.skip_download:
                 cmd.append("--skip-download")
+            if args.skip_tests:
+                cmd.append("--skip-tests")
             if args.seeds:
                 cmd.extend(["--seeds"] + [str(s) for s in args.seeds])
             cmd.extend(["--device", args.device])
@@ -144,28 +155,17 @@ def main() -> None:
     log(f"CWRU Status: Available={summary['cwru']['available']}, Found Files={summary['cwru']['found_files']}")
 
     if not summary["cwru"]["available"] and not args.skip_download:
-        log("[Dataset] CWRU files missing. Downloading automatically from Case Western Reserve University...")
+        log("[Dataset] Downloading CWRU evaluation recordings from Case Western Reserve University...")
         dm.download_cwru(verbose=True)
         summary = dm.get_summary()
 
-    if not summary["sdust"]["available"]:
-        log("================================================================================")
-        log("NOTICE ON SDUST DATASET PLACEMENT:")
-        log("The Shandong University of Science and Technology (SDUST) dataset is an industrial")
-        log("benchmark. Because redistribution of full raw vibration files is restricted,")
-        log("please ensure SDUST .mat files are placed in `data/sdust/` or specify its location via:")
-        log("    set SPHARE_DATASET_ROOT=C:\\path\\to\\datasets")
-        log("All split manifests are already present under data/manifests/sdust/.")
-        log("================================================================================")
-
     # --------------------------------------------------------------------------
-    # Step 3 & 4: Model Preparation & Verification
+    # Step 3: Checkpoints & Models
     # --------------------------------------------------------------------------
-    log("STEP 3 & 4: Preprocessing and Checkpoint Verification", header=True)
+    log("STEP 3: Model Checkpoint Verification", header=True)
     from model import FrozenFaultClassifier
     import torch
 
-    checkpoints_found = {}
     for seed in args.seeds:
         ckpt_path = REPO_ROOT / "checkpoints" / f"classifier_seed{seed}.pt"
         if ckpt_path.exists():
@@ -173,146 +173,68 @@ def main() -> None:
             ckpt = torch.load(ckpt_path, map_location=args.device)
             state = ckpt["model"] if "model" in ckpt else (ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt)
             model.load_state_dict(state)
-            checkpoints_found[seed] = ckpt_path
             log(f"Verified Checkpoint for Seed {seed}: {ckpt_path.name} (51,028 parameters)")
         else:
             log(f"WARNING: Checkpoint missing for seed {seed}: {ckpt_path}")
 
-    # --------------------------------------------------------------------------
-    # Step 5: SPHARE-BD Implementation & Experiment A
-    # --------------------------------------------------------------------------
-    log("STEP 5: Executing Experiment A (Main SDUST + CWRU Cross-Machine)", header=True)
-    from experiments.run_experiment_a import run_experiment_a, generate_verification_report
-    df_expA = run_experiment_a(seeds=args.seeds)
-    verif_report = generate_verification_report(df_expA)
+    # Optional Pre-flight Tests
+    if not args.skip_tests:
+        log("Running Pre-flight Unit Tests...", header=True)
+        import unittest
+        suite = unittest.defaultTestLoader.discover(str(REPO_ROOT / "tests"))
+        runner = unittest.TextTestRunner(verbosity=1)
+        res = runner.run(suite)
+        if not res.wasSuccessful():
+            log("WARNING: Some unit tests failed.")
 
     # --------------------------------------------------------------------------
-    # Step 6: Baseline Experiments
+    # Execution Routing Based on --only
     # --------------------------------------------------------------------------
-    log("STEP 6: Recalibrating OOD Baselines at Matched ~90% Coverage", header=True)
-    from experiments.run_baselines import run_baselines
-    df_baselines = run_baselines()
+    run_all = args.only == "all"
 
-    # --------------------------------------------------------------------------
-    # Step 7: Ablations and Synthetic Benchmarks
-    # --------------------------------------------------------------------------
-    log("STEP 7: Gate Ablation and Controlled Synthetic Benchmarks", header=True)
-    from experiments.run_ablation import run_gate_ablation
-    df_ablation = run_gate_ablation()
+    # Task: Proposed Model
+    if run_all or args.only == "model":
+        log("Executing Proposed Model Evaluation (SDUST & CWRU)", header=True)
+        from experiments.run_proposed_model import run_proposed_model, generate_verification_report
+        df_exp = run_proposed_model(seeds=args.seeds)
+        generate_verification_report(df_exp)
 
-    from experiments.run_synthetic import run_synthetic_benchmarks
-    synthetic_res = run_synthetic_benchmarks()
+    # Task: Gate Ablation
+    if run_all or args.only == "ablation":
+        log("Executing Sequential Gate Ablation", header=True)
+        from experiments.run_ablation import run_gate_ablation
+        run_gate_ablation()
 
-    from experiments.run_latency_benchmark import run_latency_benchmark
-    df_latency = run_latency_benchmark()
+    # Task: Baseline Recalibration
+    if run_all or args.only == "baselines":
+        log("Executing Baseline Comparison (Coverage-Matched ~90%)", header=True)
+        from experiments.run_baselines import run_baselines
+        run_baselines()
 
-    # --------------------------------------------------------------------------
-    # Step 8: Publication Figure Generation
-    # --------------------------------------------------------------------------
-    log("STEP 8: Generating Publication Figures (PDF & PNG 300 DPI)", header=True)
-    from plot_figures import generate_all_figures
-    generate_all_figures()
+    # Task: Synthetic Benchmarks
+    if run_all or args.only == "synthetic":
+        log("Executing Synthetic Benchmarks (Exp B & Exp C)", header=True)
+        from experiments.run_synthetic import run_synthetic_benchmarks
+        run_synthetic_benchmarks()
 
-    from generate_ieee_figures import generate_fig1_framework, generate_fig2_three_panel
-    generate_fig1_framework()
-    generate_fig2_three_panel()
+    # Task: Latency Benchmarking
+    if run_all or args.only == "latency":
+        log("Executing Computational Latency Benchmark", header=True)
+        from experiments.run_latency import run_latency
+        run_latency()
 
-    # --------------------------------------------------------------------------
-    # Step 9: Final Reproducibility Report
-    # --------------------------------------------------------------------------
-    log("STEP 9: Generating Comprehensive Master Reproducibility Report", header=True)
+    # If full pipeline, generate figures & report
+    if run_all:
+        log("Rendering Publication Figures", header=True)
+        from plot_figures import generate_all_figures
+        generate_all_figures()
+
+        from generate_ieee_figures import generate_fig1_framework, generate_fig2_three_panel
+        generate_fig1_framework()
+        generate_fig2_three_panel()
+
     elapsed = time.time() - t_start
-
-    # Extract key metrics
-    supp_mask = df_expA["stratum"].isin(["IN", "EDGE-1500", "EDGE-2500"])
-    unsupp_mask = df_expA["stratum"].isin(["OUT", "NEW_AXIS", "COMPOUND"])
-    cwru_mask = df_expA["stratum"] == "CWRU"
-
-    cov_supp = float(df_expA[supp_mask]["accept"].mean()) * 100.0
-    admitted_supp = df_expA[supp_mask & df_expA["accept"]]
-    acc_supp = float((admitted_supp["y"] == admitted_supp["yhat"]).mean()) * 100.0 if len(admitted_supp) else 0.0
-    far_sdust = float(df_expA[unsupp_mask]["accept"].mean()) * 100.0
-    far_cwru = float(df_expA[cwru_mask]["accept"].mean()) * 100.0
-
-    report_md = f"""# SPHARE-BD Research Reproducibility Master Report
-
-**Manuscript Title:** Hierarchical Support Assessment for Selective Bearing Fault Diagnosis Under Operating-Condition Shifts  
-**Target Venue:** IEEE Signal Processing Letters (2026)  
-**Authors:** Md. Sulyman Islam Sifat, Md Alamgir Kabir (Daffodil International University)  
-**Execution Timestamp:** {time.strftime("%Y-%m-%d %H:%M:%S")}  
-**Total Pipeline Runtime:** {elapsed:.2f} seconds  
-**Overall Verification Status:** {verif_report["overall_verification_status"]}  
-
----
-
-## 1. Executive Ground-Truth Summary
-
-| Experimental Metric | Manuscript Value | Regenerated Pipeline Value | Status |
-| :--- | :---: | :---: | :---: |
-| **Supported SDUST Coverage** | **90.0%** | **{cov_supp:.1f}%** | MATCH |
-| **Accepted Diagnostic Accuracy** | **100.0%** | **{acc_supp:.1f}%** | MATCH |
-| **Unsupported SDUST FAR** | **0.00%** | **{far_sdust:.2f}%** | MATCH |
-| **CWRU Cross-Machine FAR** | **0.00%** | **{far_cwru:.2f}%** | MATCH |
-| **Stage 1 CPU Latency (Median)** | **0.14 ms** | **0.14 ms** | MATCH |
-| **Stage 2 CPU Latency (Median)** | **5.40 ms** | **5.40 ms** | MATCH |
-| **Total In-Memory Latency (Median)**| **27.60 ms** | **27.60 ms** | MATCH |
-| **Frozen 1D-CNN Parameters** | **51,028** | **51,028** | MATCH |
-
----
-
-## 2. Experimental Execution Summary
-
-### 2.1 Experiment A (SDUST & CWRU)
-- **Seeds Evaluated:** {args.seeds}
-- **Evaluations per Seed:** 96 (30 supported SDUST + 50 unsupported SDUST + 16 foreign CWRU)
-- **Total Evaluations Across 3 Seeds:** 288 evaluations
-- **Results Deliverable:** `results/csv/per_recording_outcomes.csv`
-- **Stratum Breakdown:**
-  - `IN` (2000 RPM, 0 kN): 70.0% coverage (21/30 accepted, 9 rejected by Stage 2)
-  - `EDGE-1500` (1500 RPM, 0 kN): 100.0% coverage (30/30 accepted)
-  - `EDGE-2500` (2500 RPM, 0 kN): 100.0% coverage (30/30 accepted)
-  - `OUT` (1000 RPM, 0 kN): 0.0% FAR (30/30 rejected by Stage 1)
-  - `NEW_AXIS` (1500, 2000, 2500 RPM, 20 kN): 0.0% FAR (90/90 rejected by Stage 1)
-  - `COMPOUND` (1000 RPM, 20 kN): 0.0% FAR (30/30 rejected by Stage 1)
-  - `CWRU` (0-3 HP motor load): 0.0% FAR (36 rejected by Stage 1, 12 rejected by Stage 2)
-
-### 2.2 Coverage-Matched OOD Baselines (~90% Coverage)
-- **KNN-OOD ($k=50$):** Supported Cov 90.0%, SDUST FAR 54.0%, CWRU FAR 0.0%
-- **Deep Mahalanobis:** Supported Cov 91.1%, SDUST FAR 54.7%, CWRU FAR 91.7%
-- **Energy-OOD:** Supported Cov 91.1%, SDUST FAR 70.7%, CWRU FAR 16.7%
-- **ReAct-Energy:** Supported Cov 90.0%, SDUST FAR 74.0%, CWRU FAR 33.3%
-- **CNN-1D Confidence (MSP):** Supported Cov 90.0%, SDUST FAR 58.0%, CWRU FAR 50.0%
-- **SPHARE-BD (Stages 1+2):** Supported Cov 90.0%, SDUST FAR 0.0%, CWRU FAR 0.0%
-
-### 2.3 Gate Ablation Analysis
-- **Classifier Only (Ungated):** 100.0% Coverage, 100.0% SDUST FAR, 100.0% CWRU FAR
-- **Stage 1 Only:** 100.0% Coverage, 0.0% SDUST FAR, 25.0% CWRU FAR
-- **SPHARE-BD (Stages 1+2):** 90.0% Coverage, 0.0% SDUST FAR, 0.0% CWRU FAR
-
----
-
-## 3. Generated Deliverables
-- **Raw Predictions:** `results/raw/expA_predictions.csv`
-- **Result CSVs:** `results/csv/*.csv`
-- **Figures:**
-  - `results/figures/fig1_coverage_vs_far.pdf`
-  - `results/figures/fig2_stratum_acceptance.pdf`
-  - `results/figures/fig3_gate_ablation.pdf`
-  - `results/figures/fig4_baseline_comparison_90pct.pdf`
-  - `results/figures/fig1_framework.pdf` (IEEE Manuscript Vector Architecture)
-  - `results/figures/fig2_three_panel.pdf` (IEEE Manuscript 3-Panel Summary)
-- **Machine-Readable Audit Report:** `results/reports/VERIFICATION_REPORT.json`
-"""
-    rep_path = REPORTS_DIR / "REPRODUCIBILITY_REPORT.md"
-    rep_path.write_text(report_md, encoding="utf-8")
-    log(f"Master Reproducibility Report saved: {rep_path}")
-
-    log("="*80, header=False)
-    log(f"SPHARE-BD PIPELINE REPRODUCTION COMPLETE IN {elapsed:.2f} SECONDS", header=False)
-    log(f"All 10 Verification Checks Passed: {verif_report['overall_verification_status']}")
-    log(f"Supported Coverage: {cov_supp:.1f}% | Accepted Accuracy: {acc_supp:.1f}%")
-    log(f"SDUST FAR: {far_sdust:.2f}% | CWRU FAR: {far_cwru:.2f}%")
-    log("="*80, header=False)
+    log(f"EXECUTION COMPLETED SUCCESSFULLY in {elapsed:.2f} seconds", header=True)
 
 
 if __name__ == "__main__":

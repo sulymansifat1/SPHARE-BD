@@ -3,7 +3,6 @@ setlocal EnableDelayedExpansion
 
 echo ================================================================================
 echo SPHARE-BD: Reproducible Research Pipeline Launcher
-echo IEEE Signal Processing Letters (2026)
 echo Authors: Md. Sulyman Islam Sifat, Md Alamgir Kabir
 echo ================================================================================
 echo(

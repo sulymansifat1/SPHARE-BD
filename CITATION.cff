@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use SPHARE-BD in your research, please cite our IEEE Signal Processing Letters paper."
+message: "If you use SPHARE-BD in your research, please cite our manuscript."
 title: "Hierarchical Support Assessment for Selective Bearing Fault Diagnosis Under Operating-Condition Shifts"
 authors:
   - family-names: "Sifat"
@@ -19,9 +19,7 @@ preferred-citation:
     - family-names: "Kabir"
       given-names: "Md Alamgir"
   title: "Hierarchical Support Assessment for Selective Bearing Fault Diagnosis Under Operating-Condition Shifts"
-  journal: "IEEE Signal Processing Letters"
   year: 2026
-  publisher: "IEEE"
 repository-code: "https://github.com/sulymansifat1/SPHARE-BD"
 keywords:
   - "bearing fault diagnosis"

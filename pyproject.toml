@@ -17,8 +17,7 @@ keywords = [
     "selective-classification",
     "support-assessment",
     "out-of-distribution-detection",
-    "vibration-signal-processing",
-    "signal-processing-letters"
+    "vibration-signal-processing"
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",

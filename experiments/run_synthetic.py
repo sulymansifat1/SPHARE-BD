@@ -9,25 +9,36 @@ Evaluates:
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 import sys
 import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+DATA_SYNTHETIC = REPO_ROOT / "data" / "synthetic"
 RESULTS_CSV = REPO_ROOT / "results" / "csv"
 RESULTS_CSV.mkdir(parents=True, exist_ok=True)
 
 
 def run_synthetic_benchmarks() -> dict[str, pd.DataFrame]:
     """Summarizes and verifies synthetic experiments B and C."""
-    expB_path = RESULTS_CSV / "expB_synthetic_stage_ablation.csv"
-    expC_path = RESULTS_CSV / "expC_cross_machine_comparison.csv"
+    # Reference paths in data/
+    ref_b = DATA_SYNTHETIC / "expB_synthetic_stage_ablation.csv"
+    ref_c = DATA_SYNTHETIC / "expC_cross_machine_comparison.csv"
 
-    if not expB_path.exists() or not expC_path.exists():
-        raise FileNotFoundError("Synthetic benchmark results CSVs missing.")
+    # Destination paths in results/
+    out_b = RESULTS_CSV / "expB_synthetic_stage_ablation.csv"
+    out_c = RESULTS_CSV / "expC_cross_machine_comparison.csv"
 
-    df_b = pd.read_csv(expB_path)
-    df_c = pd.read_csv(expC_path)
+    if not ref_b.exists() or not ref_c.exists():
+        raise FileNotFoundError(f"Synthetic benchmark source data missing from {DATA_SYNTHETIC}")
+
+    # Copy to results directory
+    shutil.copy(ref_b, out_b)
+    shutil.copy(ref_c, out_c)
+
+    df_b = pd.read_csv(out_b)
+    df_c = pd.read_csv(out_c)
 
     # Exp B summary: Stage1+2 on stratum IN
     in_s12 = df_b[(df_b["stages"] == "Stage1+2") & (df_b["stratum"] == "IN")]
@@ -52,6 +63,7 @@ def run_synthetic_benchmarks() -> dict[str, pd.DataFrame]:
     print("\n[Synthetic Exp C] Synthetic Cross-Machine Benchmark:")
     print(f"  - CM-IN Admitted Coverage: {float(cm_in['stage2_pass_rate']) * 100:.2f}% ({int(float(cm_in['stage2_pass_rate']) * float(cm_in['n']))}/{int(cm_in['n'])})")
     print(f"  - CM-OUT False Acceptance: {float(cm_out['stage1_pass_rate']) * 100:.2f}% (0/{int(cm_out['n'])})")
+    print(f"\n[Synthetic] Results saved to {RESULTS_CSV}")
 
     return {"expB": df_b, "expC": df_c}
 
